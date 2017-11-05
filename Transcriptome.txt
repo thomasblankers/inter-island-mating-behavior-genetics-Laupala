@@ -1,0 +1,469 @@
+
+### Assemble Transcriptome
+
+## build HISAT index
+
+/data/software/HISAT2/hisat2-build /data/bowtieindexes/Lakoh057scf.fa /data/bowtieindexes/Lakoh057 -p 15 # Lakoh057scf.fa is the reference genome in NCBI accession NNCF00000000 ; BioSample SAMN07312831
+
+## align RNAseq read to ref genome
+
+
+cd /data/RNAseqAlignment/v057
+mkdir /data/RNAseqAlignment/v057/Hisat_out
+
+/data/software/HISAT2/hisat2 -p 15 -x /data/bowtieindexes/Lakoh057 -1 /data/LacerRNASeq/00_processed/Lacer_female_RNAseq.Q30L30.R1.fq,/data/LacerRNASeq/00_processed/Lacer_male_RNAseq.Q30L30.R1.fq -2 /data/LacerRNASeq/00_processed/Lacer_female_RNAseq.Q30L30.R2.fq,/data/LacerRNASeq/00_processed/Lacer_male_RNAseq.Q30L30.R2.fq -S Hisat_out/LaCer057_alignment.sam
+
+50148157 reads; of these:
+  50148157 (100.00%) were paired; of these:
+    9897616 (19.74%) aligned concordantly 0 times
+    36299761 (72.39%) aligned concordantly exactly 1 time
+    3950780 (7.88%) aligned concordantly >1 times
+    ----
+    9897616 pairs aligned concordantly 0 times; of these:
+      833046 (8.42%) aligned discordantly 1 time
+    ----
+    9064570 pairs aligned 0 times concordantly or discordantly; of these:
+      18129140 mates make up the pairs; of these:
+        9445740 (52.10%) aligned 0 times
+        6505157 (35.88%) aligned exactly 1 time
+        2178243 (12.02%) aligned >1 times
+90.58% overall alignment rate
+
+# sam to BAM
+samtools view -@ 10 -Sbo Hisat_out/LaCer057_alignment.bam Hisat_out/LaCer057_alignment.sam
+
+# sort BAM
+samtools sort -@ 10 -o Hisat_out/LaCer057_RNA_aligned_sorted Hisat_out/LaCer057_alignment.bam 
+
+
+## Genome guided assembly
+
+mkdir /data/RNAseqAlignment/v057/TrinityAssembly
+cd /data/RNAseqAlignment/v057/TrinityAssembly
+
+/data/software/Trinity/Trinity --genome_guided_bam /data/RNAseqAlignment/v057/Hisat_out/LaCer057_RNA_aligned_sorted.bam --genome_guided_max_intron 5000 --max_memory 60G --CPU 20
+
+### run contamination screens
+
+
+## using presets for NCBI vecscreen on the UniVec database:
+
+#download Univec / Univec_core ftp://ftp.ncbi.nlm.nih.gov/pub/UniVec/
+# make local databse
+makeblastdb -in UniVec.fasta -input_type fasta -dbtype nucl -title UniVec
+
+# run blastn using NCBI VecScreen settings:
+blastn -task blastn -db UniVec_Core.fasta -query /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/LaCer057_transcriptome.fasta -out /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/LaCer057_Transcriptome_UniVec.txt -reward 1 -penalty -5 -gapopen 3 -gapextend 3 -soft_masking true -evalue 700 -searchsp 1750000000000 -outfmt 7 -num_threads 20
+
+#parse output
+# skipe all lines starting with #
+sed '/^#/ d' LaCer057_Transcriptome_UniVec.txt > LaCer057_Transcriptome_UniVec_parsed.txt
+# add this line of headers 
+#query	acc.ver|subject|acc.ver	identity	length	mismatches	gap	q.start	q.end	s.start	s.end	evalue	bitscore
+
+# returned many hits of very short lenght 16-20 letters, re-checking some of these in VecScreen online shows that these hits are spurious. 
+
+
+
+### transcriptome Quality Control
+
+## get Trinity stats
+/data/software/Trinity/util/TrinityStats.pl Trinity-GG_LaCer057_transcriptome.fasta
+
+
+################################
+## Counts of transcripts, etc.
+################################
+Total trinity 'genes':	58500
+Total trinity transcripts:	61161
+Percent GC: 39.43
+
+########################################
+Stats based on ALL transcript contigs:
+########################################
+
+	Contig N10: 5512
+	Contig N20: 3970
+	Contig N30: 3022
+	Contig N40: 2358
+	Contig N50: 1805
+
+	Median contig length: 397
+	Average contig: 881.74
+	Total assembled bases: 53928392
+
+
+#####################################################
+## Stats based on ONLY LONGEST ISOFORM per 'GENE':
+#####################################################
+
+	Contig N10: 5023
+	Contig N20: 3641
+	Contig N30: 2777
+	Contig N40: 2155
+	Contig N50: 1626
+
+	Median contig length: 384
+	Average contig: 821.36
+	Total assembled bases: 48049332
+
+
+
+## bowtie read mapping
+bowtie2-build Trinity-GG_LaCer057_transcriptome.fasta Trinity-GG_LaCer057_transcriptome
+
+(bowtie2 -p 10 -q -x Trinity-GG_LaCer057_transcriptome -1 /data/LacerRNASeq/00_processed/Lacer_male_RNAseq.Q30L30.R1.fq -2 /data/LacerRNASeq/00_processed/Lacer_male_RNAseq.Q30L30.R2.fq  -S LaCer_male_RNAalign.sam) 2>>align_stats_males.txt
+
+23551937 reads; of these:
+  23551937 (100.00%) were paired; of these:
+    3351373 (14.23%) aligned concordantly 0 times
+    14700157 (62.42%) aligned concordantly exactly 1 time
+    5500407 (23.35%) aligned concordantly >1 times
+    ----
+    3351373 pairs aligned concordantly 0 times; of these:
+      530396 (15.83%) aligned discordantly 1 time
+    ----
+    2820977 pairs aligned 0 times concordantly or discordantly; of these:
+      5641954 mates make up the pairs; of these:
+        3745575 (66.39%) aligned 0 times
+        1086183 (19.25%) aligned exactly 1 time
+        810196 (14.36%) aligned >1 times
+92.05% overall alignment rate
+
+(bowtie2 -p 10 -q -x Trinity-GG_LaCer057_transcriptome -1 /data/LacerRNASeq/00_processed/Lacer_female_RNAseq.Q30L30.R1.fq -2 /data/LacerRNASeq/00_processed/Lacer_female_RNAseq.Q30L30.R2.fq  -S LaCer_female_RNAalign.sam) 2>>align_stats_females.txt
+
+26596220 reads; of these:
+  26596220 (100.00%) were paired; of these:
+    3907845 (14.69%) aligned concordantly 0 times
+    15481493 (58.21%) aligned concordantly exactly 1 time
+    7206882 (27.10%) aligned concordantly >1 times
+    ----
+    3907845 pairs aligned concordantly 0 times; of these:
+      688227 (17.61%) aligned discordantly 1 time
+    ----
+    3219618 pairs aligned 0 times concordantly or discordantly; of these:
+      6439236 mates make up the pairs; of these:
+        4119746 (63.98%) aligned 0 times
+        1244004 (19.32%) aligned exactly 1 time
+        1075486 (16.70%) aligned >1 times
+92.26% overall alignment rate
+
+## calculate sex-specific sequencing depth
+
+# convert sam files from male and female specific read alignment convert to bam and sort. Then:
+samtools depth LaCer_male_RNAalign_sorted.bam  |  awk '{sum+=$3; sumsq+=$3*$3} END { print "Average = ",sum/NR; print "Stdev = ",sqrt(sumsq/NR - (sum/NR)^2)}'
+samtools depth LaCer_female_RNAalign_sorted.bam  |  awk '{sum+=$3; sumsq+=$3*$3} END { print "Average = ",sum/NR; print "Stdev = ",sqrt(sumsq/NR - (sum/NR)^2)}'
+
+female: mean = 49.9, stdev = 303.7
+male: mean = 40.8, stdev = 200.1
+
+## BUSCO
+
+export PATH="$PATH:/data/software/augustus-3.2.3/bin:/data/software/augustus-3.2.3/scripts"
+export AUGUSTUS_CONFIG_PATH=/data/software/augustus-3.2.3/config
+
+python /data/software/BUSCO/busco/BUSCO.py -i /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta -o arthropoda -l /data/software/BUSCO/datasets/arthropoda_odb9/ -m genome -c 10 -sp fly
+
+INFO	C:95.2%[S:83.7%,D:11.5%],F:1.9%,M:2.9%,n:1066
+INFO	1015 Complete BUSCOs (C)
+INFO	892 Complete and single-copy BUSCOs (S)
+INFO	123 Complete and duplicated BUSCOs (D)
+INFO	20 Fragmented BUSCOs (F)
+INFO	31 Missing BUSCOs (M)
+INFO	1066 Total BUSCO groups searched
+
+python /data/software/BUSCO/busco/BUSCO.py -i /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta -o eukaryota -l /data/software/BUSCO/datasets/eukaryota_odb9/ -m genome -c 10 -sp fly
+
+INFO	C:97.4%[S:85.5%,D:11.9%],F:1.7%,M:0.9%,n:303
+INFO	295 Complete BUSCOs (C)
+INFO	259 Complete and single-copy BUSCOs (S)
+INFO	36 Complete and duplicated BUSCOs (D)
+INFO	5 Fragmented BUSCOs (F)
+INFO	3 Missing BUSCOs (M)
+INFO	303 Total BUSCO groups searched
+
+### annotate transcriptome
+
+## map transcripts to genome
+
+# gmap
+
+gmap_build -d /data/bowtieindexes/Lakoh057scf_GMAPdatabase /data/bowtieindexes/Lakoh057scf.fa
+
+mkdir /data/RNAseqAlignment/v057/TrinityAssembly/Gmap
+cd /data/RNAseqAlignment/v057/TrinityAssembly/Gmap
+
+gmap -D /data/bowtieindexes -d Lakoh057scf_GMAPdatabase -t 6 --cross-species -A -S -f gff3_gene  /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta > LaCer057_TrinityTranscriptome_mapped
+
+# BLAT
+mkdir /data/RNAseqAlignment/v057/TrinityAssembly/BLAT
+cd /data/RNAseqAlignment/v057/TrinityAssembly/BLAT
+
+blat /data/bowtieindexes/Lakoh057scf.fa /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta -q=rna -t=dna LaCer057_TrinityTranscriptome_mapped.psl
+
+
+# merge BLAT and gmap output in R
+gmap_out<-read.delim("/data/RNAseqAlignment/v057/TrinityAssembly/Gmap/LaCer057_TrinityTranscriptome_mapped", skip=2, header=FALSE)
+
+colnames(gmap_out)<-c("scaffold","database","annotation","start","stop","size","direction",".0","info")
+
+blat_out<-read.delim("/data/RNAseqAlignment/v057/TrinityAssembly/BLAT/LaCer057_TrinityTranscriptome_mapped.psl", skip=5, header=FALSE)
+
+colnames(blat_out)<-c("match","mismatch","repmatch","Ns","Qgapcount","Qgapbases","Tgpacount","Tgapbases","strand","transcript","t_size","t_start","t_end","scaffold","ssize","s_start","s_end","blockcount","blocksizes","qStarts","tStarts")
+
+blat_out$info<-paste0(paste0("blockcount=",blat_out$blockcount),paste0("blocksizes=",blat_out$blocksizes),paste0("match=",blat_out$match),paste0("identity=",blat_out$ssize/blat_out$match))
+
+blat_out$annotation<-NA
+
+library(tidyr)
+gmap_out$transcript<-separate(data = gmap_out, into=c("a","b","c","d","e","f","g","h","i","j"), col = info, sep = "=")[,"c"]
+
+gmap_out$transcript<-gsub(";Parent","",gmap_out$transcript)
+
+scaffolds_transcripts<-rbind(gmap_out[,c("scaffold","transcript","annotation","info")],blat_out[,c("scaffold","transcript","annotation","info")])
+
+
+## functional annotation in BLAST
+
+
+# split transcriptome into subsets of 1000 contigs
+
+mkdir /data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments
+
+awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1000==0){file=sprintf("LaCer057_Transcriptome%d.aa",n_seq);} print >> file; n_seq++; next;} { print >> file; }' < /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta
+
+# perform blastx search against local D melanogaster proteome
+
+from Bio.Blast.Applications import NcbiblastxCommandline
+
+
+for i in range(0, 21):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/Dmel_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_Dmel.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(21, 41):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/Dmel_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_Dmel.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(41, 62):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/Dmel_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_Dmel.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+
+
+
+
+# subset fasta file to only contain transcripts with NO Dmel hit:
+
+#merge all .xml from the Dmel blast
+
+cat  *.xml > LaCer057_Dmel_blastx_concatenated.xml
+
+# use biopython to create list of transcripts with no hits
+# http://biopython.org/wiki/Retrieve_nonmatching_blast_queries
+
+from Bio import SeqIO
+from Bio.Blast import NCBIXML
+
+# Build an index, but we don't need to parse the record
+q_dict = SeqIO.index("/data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta", "fasta")
+
+hits = []
+for record in NCBIXML.parse(open("LaCer057_Dmel_blastx_concatenated.xml")):
+    # As of BLAST 2.2.19 the xml output for multiple-query blast searches
+    # skips queries with no hits so we could just append the ID of every blast
+    # record to our 'hit list'. It's possible that the NCBI will change this
+    # behaviour in the future so let's make the appending conditional on there
+    # being some hits (ie, a non-empty alignments list) recorded in the blast
+    # record
+    if record.alignments:
+   	 # The blast record's 'query' contains the sequences description as a
+   	 # string. We used the ID as the key in our dictionary so we'll need to
+   	 # split the string and get the first field to remove the right entries
+   	 hits.append(record.query.split()[0])
+
+misses = set(q_dict.keys()) - set(hits)
+orphan_records = [q_dict[name] for name in misses]
+outfile=open("LaCer057_Dmel_blastx_unannotated.txt","w")
+print >> outfile, orphan_records
+outfile.close()
+
+# modify this list to be an actual list of unique transcripts with no hits
+
+sed 's/name/\n/g' LaCer057_Dmel_blastx_unannotated.txt > LaCer057_Dmel_blastx_unannotated_parsed_0.txt
+cat LaCer057_Dmel_blastx_unannotated_parsed_0.txt | sed -n 's/.*\(TRINITY\)/\1/p' > LaCer057_Dmel_blastx_unannotated_parsed_1.txt
+sort LaCer057_Dmel_blastx_unannotated_parsed_1.txt | uniq -u > LaCer057_Dmel_blastx_unannotated_parsed_2.txt
+sed -i 's/,//g' LaCer057_Dmel_blastx_unannotated_parsed_2.txt
+cat LaCer057_Dmel_blastx_unannotated_parsed_2.txt | tr -d \' > LaCer057_Dmel_blastx_unannotated_parsed.txt
+rm LaCer057_Dmel_blastx_unannotated_parsed_0.txt LaCer057_Dmel_blastx_unannotated_parsed_1.txt LaCer057_Dmel_blastx_unannotated_parsed_2.txt
+
+
+# subset the fasta file for the next round in R
+
+library(seqinr)
+fasta_in<-read.fasta("/data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta", forceDNAtolower=FALSE, as.string=TRUE)
+list_transcripts<-as.character(read.delim("LaCer057_Dmel_blastx_unannotated_parsed.txt", header=FALSE)[,1])
+list_transcripts<-gsub(" ","",list_transcripts)
+
+for(i in 1:length(fasta_in)) {
+	if(attr(fasta_in[[i]],"name") %in% list_transcripts) { write.fasta(fasta_in[[i]],attr(fasta_in[[i]],"name"),file.out="LaCer057_transcriptome_noDmel.fasta", open="a") }
+	}
+
+
+
+awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1000==0){file=sprintf("LaCer057_Transcriptome_noDmel%d.aa",n_seq);} print >> file; n_seq++; next;} { print >> file; }' < LaCer057_transcriptome_noDmel.fasta
+
+# perform blastx search against invertebrate swissprot
+
+from Bio.Blast.Applications import NcbiblastxCommandline
+
+
+for i in range(0, 16):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noDmel"+str(i*1000)+".aa", db="/data/Blast_DB/Uniprot_Swissprot_Invertebrates/uniprot_sprot_invertebrates.fa", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_sprot.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(16, 31):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noDmel"+str(i*1000)+".aa", db="/data/Blast_DB/Uniprot_Swissprot_Invertebrates/uniprot_sprot_invertebrates.fa", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_sprot.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(31, 45):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noDmel"+str(i*1000)+".aa", db="/data/Blast_DB/Uniprot_Swissprot_Invertebrates/uniprot_sprot_invertebrates.fa", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_sprot.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+
+# subset fasta file to only contain transcripts with NO swissprot hit:
+
+#merge all .xml from the swissprot_invertebrates blast
+
+cat  *_sprot.xml > LaCer057_sprot_blastx_concatenated.xml
+
+# use biopython to create list of transcripts with no hits
+
+from Bio import SeqIO
+from Bio.Blast import NCBIXML
+
+# Build an index, but we don't need to parse the record
+q_dict = SeqIO.index("LaCer057_transcriptome_noDmel.fasta", "fasta")
+
+hits = []
+for record in NCBIXML.parse(open("LaCer057_sprot_blastx_concatenated.xml")):
+    # As of BLAST 2.2.19 the xml output for multiple-query blast searches
+    # skips queries with no hits so we could just append the ID of every blast
+    # record to our 'hit list'. It's possible that the NCBI will change this
+    # behaviour in the future so let's make the appending conditional on there
+    # being some hits (ie, a non-empty alignments list) recorded in the blast
+    # record
+    if record.alignments:
+   	 # The blast record's 'query' contains the sequences description as a
+   	 # string. We used the ID as the key in our dictionary so we'll need to
+   	 # split the string and get the first field to remove the right entries
+   	 hits.append(record.query.split()[0])
+
+misses = set(q_dict.keys()) - set(hits)
+orphan_records = [q_dict[name] for name in misses]
+outfile=open("LaCer057_sprot_blastx_unannotated.txt","w")
+print >> outfile, orphan_records
+outfile.close()
+
+# modify this list to be an actual list of unique transcripts with no hits
+
+sed 's/name/\n/g' LaCer057_sprot_blastx_unannotated.txt > LaCer057_sprot_blastx_unannotated_parsed_0.txt
+cat LaCer057_sprot_blastx_unannotated_parsed_0.txt | sed -n 's/.*\(TRINITY\)/\1/p' > LaCer057_sprot_blastx_unannotated_parsed_1.txt
+sort LaCer057_sprot_blastx_unannotated_parsed_1.txt | uniq -u > LaCer057_sprot_blastx_unannotated_parsed_2.txt
+sed -i 's/,//g' LaCer057_sprot_blastx_unannotated_parsed_2.txt
+cat LaCer057_sprot_blastx_unannotated_parsed_2.txt | tr -d \' > LaCer057_sprot_blastx_unannotated_parsed.txt
+rm LaCer057_sprot_blastx_unannotated_parsed_0.txt LaCer057_sprot_blastx_unannotated_parsed_1.txt LaCer057_sprot_blastx_unannotated_parsed_2.txt
+
+# subset the fasta file for the next round in R
+
+library(seqinr)
+fasta_in<-read.fasta("LaCer057_transcriptome_noDmel.fasta", forceDNAtolower=FALSE, as.string=TRUE)
+list_transcripts<-as.character(read.delim("LaCer057_sprot_blastx_unannotated_parsed.txt", header=FALSE)[,1])
+list_transcripts<-gsub(" ","",list_transcripts)
+
+for(i in 1:length(fasta_in)) {
+	if(attr(fasta_in[[i]],"name") %in% list_transcripts) { write.fasta(fasta_in[[i]],attr(fasta_in[[i]],"name"),file.out="LaCer057_transcriptome_noSprot.fasta", open="a") }
+	}
+
+
+
+awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1000==0){file=sprintf("LaCer057_Transcriptome_noSprot%d.aa",n_seq);} print >> file; n_seq++; next;} { print >> file; }' < LaCer057_transcriptome_noSprot.fasta
+
+# perform blastx search against animal NR
+
+from Bio.Blast.Applications import NcbiblastxCommandline
+
+
+for i in range(0, 7):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(7, 10):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(10, 16):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(16, 21):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(21, 26):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(26, 31):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(31, 37):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(37, 41):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+for i in range(41, 43):
+    blastp_cline = NcbiblastxCommandline(cmd ="blastx", query="/data/RNAseqAlignment/v057/TrinityAssembly/1000sequence_fragments/LaCer057_Transcriptome_noSprot"+str(i*1000)+".aa", db="/data/Blast_DB/nr/nr/animalia_nr", evalue=0.001,  outfmt=5, out="LaCer057_Transcriptome"+str(i*1000)+"_nr.xml", num_threads=5)
+    stdout, stderr = blastp_cline()
+
+
+# Copy all xml files (excluding concatenated files) to separate folder
+
+# import in blast2go
+
+### Interpro scan
+## hmmer PFAM GO annotation
+
+export PERL5LIB="/home/thomas/perl5/lib/perl5"
+
+# rename transcripts to only have transcript ID
+
+sed 's/ len=.*//g' /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/Trinity-GG_LaCer057_transcriptome.fasta >/data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/LaCer057_transcriptome.fasta
+
+# run longest ORF protein translator
+
+perl ~/perl5/bin/hmmer2go getorf -i /data/RNAseqAlignment/v057/TrinityAssembly/trinity_out_dir/LaCer057_transcriptome.fasta -o /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs.faa -n 16
+
+# run hmmer2go
+
+perl ~/perl5/bin/hmmer2go run -i /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs.faa -d /data/software/InterProScan/interproscan-5.25-64.0/data/pfam/31.0/pfam_a.hmm -o /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs_Pfam-A.tblout -n 16
+
+# fetch Pfam
+
+#Perl ~/perl5/bin/hmmer2go fetchmap -o /data/software/InterProScan/interproscan-5.25-64.0/data/pfam/31.0/pfam2go
+
+# map GOs
+
+perl ~/perl5/bin/hmmer2go mapterms -i /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs_Pfam-A.tblout -p /data/software/InterProScan/interproscan-5.25-64.0/data/pfam/31.0/pfam2go -o /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs_Pfam-A_GO.tsv --map -n 16
+
+
+## run interproscan (check performance setting in .properties file, change path to rpsblast to the current version in $PATH)
+
+/data/software/InterProScan/interproscan.sh -i /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs.faa -b /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_interpro -goterms -iprlookup -cpu 16
+
+
+
