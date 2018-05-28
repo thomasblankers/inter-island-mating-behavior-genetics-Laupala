@@ -465,5 +465,85 @@ perl ~/perl5/bin/hmmer2go mapterms -i /data/RNAseqAlignment/v057/TrinityAssembly
 
 /data/software/InterProScan/interproscan.sh -i /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_orfs.faa -b /data/RNAseqAlignment/v057/TrinityAssembly/LaCer057_transcriptome_interpro -goterms -iprlookup -cpu 16
 
+#### collapse duplicate annotations
+
+annotation<-read.delim("LaCer057_transcriptome_annotation.txt") # this is the output from blast2go
+annotation_blasthits<-annotation[-which(annotation$gene=="No Blast Hit"),] # remove transcripts with no annottions
+annotation_blasthits$gene<-factor(annotation_blasthits$gene) # reset factor levels for loop
+
+scaffolds_transcripts<-read.delim("LaCer057_Scaffolds_Transcripts_NoDuplicates.txt") # list of transcripts and corresponding scaffolds
+
+
+annotation_blasthits<-merge(annotation_blasthits,scaffolds_transcripts[,c("scaffold","transcript")],"transcript")
+
+# remove anything in the annotation (gene) field from "partial" or "isoform" onwards
+annotation_blasthits$gene<-gsub(", partial.*", "", annotation_blasthits$gene)
+annotation_blasthits$gene<-gsub(", isoform.*", "", annotation_blasthits$gene)
+# reset factor levels for loop
+annotation_blasthits$gene<-factor(annotation_blasthits$gene)
+annotation_blasthits$scaffold<-factor(annotation_blasthits$scaffold)
+
+## LOOP THROUGH ANNOTATIONS TO FIND DUPLICATES AND COLLAPSE DUPLICATES WHILE RETAINING ALL GO ANNOTATIONS
+	annotation_nodup<-NULL
+	pb <- txtProgressBar(min = 0, max = length(levels(annotation_blasthits$scaffold)), style = 3) # progress bar
+		for(scaffold in levels(annotation_blasthits$scaffold)) {
+			setTxtProgressBar(pb, which(levels(annotation_blasthits$scaffold) == scaffold))
+			scaffold_df<-annotation_blasthits[which(annotation_blasthits$scaffold==scaffold),]
+			scaffold_df$gene<-factor(scaffold_df$gene)
+				for(gene in levels(scaffold_df$gene)) {
+					gene_df<-scaffold_df[which(scaffold_df$gene == gene),]
+					if(nrow(gene_df) > 1) { 
+						new_gene_df<-gene_df[sample(seq(1:nrow(gene_df)),1),]
+						transcript_vec<-NULL
+						go_vec<-NULL
+						go_name_vec<-NULL
+						enzyme_code_vec<-NULL
+						enzyme_vec<-NULL
+						ips_vec<-NULL
+						ips_go_vec<-NULL
+						ips_go_name_vec<-NULL
+						for(j in 1:nrow(gene_df)) {
+							transcript_vec<-c(transcript_vec,as.character(gene_df[j,]$transcript))
+							go_vec<-unique(c(go_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$GO),";")))))
+							go_name_vec<-unique(c(go_name_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$GO_name),";")))))
+							#enzyme_code_vec<-unique(c(enzyme_code_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$enzyme_code),";")))))
+							#enzyme_vec<-unique(c(enzyme_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$enzyme),";")))))
+							#ips_vec<-unique(c(ips_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$IPS),";")))))
+							ips_go_vec<-unique(c(ips_go_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$IPS_GO),";")))))
+							#ips_go_name_vec<-unique(c(ips_go_name_vec,gsub(" ","",unlist(strsplit(as.vector(gene_df[j,]$IPS_GO_name),";")))))
+							}
+						new_gene_df$transcript<-paste(transcript_vec, collapse=";")
+						new_gene_df$GO<-paste(go_vec, collapse=";")
+						new_gene_df$GO_name<-paste(go_name_vec, collapse=";")
+						#new_gene_df$enzyme<-paste(enzyme_vec, collapse=";")
+						#new_gene_df$enzyme_code<-paste(enzyme_code_vec, collapse=";")
+						#new_gene_df$IPS<-paste(ips_vec, collapse=";")
+						new_gene_df$IPS_GO<-paste(ips_go_vec, collapse=";")
+						#new_gene_df$IPS_GO_name<-paste(ips_go_name_vec, collapse=";")
+						
+						annotation_nodup<-rbind(annotation_nodup,new_gene_df)
+						}
+					
+									
+					if(nrow(gene_df) == 1)  { annotation_nodup<-rbind(annotation_nodup,gene_df) }
+					if(nrow(gene_df) == 0) { print(paste0("empty annotation for ",scaffold))}
+					}
+			}
+close(pb) # close progress bar
+
+write.table(annotation_nodup,"annotation_nodup_noiso_nopart.txt",sep="\t",quote=FALSE, row.names=FALSE)
+
+
+## MAKE GO UNIVERSE for topGO
+annotation_nodup_GOuniverse<-annotation_nodup[,c("transcript","GO")]
+annotation_nodup_GOuniverse$GO<-gsub(";", ",", annotation_nodup_GOuniverse$GO)
+annotation_nodup_GOuniverse$GO<-gsub("P:", "", annotation_nodup_GOuniverse$GO)
+annotation_nodup_GOuniverse$GO<-gsub("C:", "", annotation_nodup_GOuniverse$GO)
+annotation_nodup_GOuniverse$GO<-gsub("F:", "", annotation_nodup_GOuniverse$GO)
+
+write.table(annotation_nodup_GOuniverse,"annotation_nodup_noiso_nopart_GOuniverse.txt",sep="\t",quote=FALSE, row.names=FALSE)
+
+
+
 
 
